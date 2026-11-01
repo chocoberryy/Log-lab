@@ -1,32 +1,41 @@
 """Aplikasi Monitor: menerima event login dan status dari Source (R-03).
- 
+
 Urutan penting untuk setiap event: periksa -> simpan (commit) -> baru balas receipt.
 """
 from __future__ import annotations
- 
+
+import asyncio
+import contextlib
 import hmac
 import json
+import logging
 import sqlite3
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
- 
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
- 
+
+from .analysis import run_cycle
 from .config import Settings
+from .console import register_console
 from .db import connect, initialize_monitor
 from .events import (build_receipt, event_json, parse_utc, utc_now,
                      validate_event, validate_source_status)
- 
+
 MAX_BODY_BYTES = 8 * 1024  # batas payload satu event: 8 KiB (EP-04)
- 
- 
+ANALYSIS_INTERVAL_SECONDS = 5  # jeda antar putaran analisis (di luar transaksi ingest)
+log = logging.getLogger("loglab.monitor")
+
+
 def _error(status: int, code: str) -> JSONResponse:
     """Semua error berbentuk JSON dengan satu field: {'error': '<kode>'}."""
     return JSONResponse({"error": code}, status_code=status)
- 
- 
+
+
 def _record_rejection(db_path: Path, source_id: str | None, reason: str) -> None:
     """Catat alasan penolakan. Isi request (body/token) TIDAK pernah dicatat."""
     try:
@@ -37,11 +46,11 @@ def _record_rejection(db_path: Path, source_id: str | None, reason: str) -> None
             )
     except sqlite3.Error:
         pass  # gagal mencatat alasan tidak boleh mengubah jawaban ke Source
- 
- 
+
+
 def _store_event(db_path: Path, event: dict[str, Any]) -> tuple[str | None, str | None]:
     """Simpan event dalam SATU transaksi.
- 
+
     Mengembalikan (status, None) bila berhasil: 'stored' atau 'duplicate'.
     Mengembalikan (None, kode_error) bila konflik.
     Commit terjadi saat blok `with` selesai, sebelum fungsi ini kembali.
@@ -72,8 +81,8 @@ def _store_event(db_path: Path, event: dict[str, Any]) -> tuple[str | None, str 
              utc_now(), event_json(event)),
         )
         return "stored", None
- 
- 
+
+
 def _store_status(db_path: Path, status: dict[str, Any]) -> dict[str, Any]:
     """Simpan/perbarui status sumber. Status BUKAN event login."""
     received = utc_now()
@@ -99,20 +108,70 @@ def _store_status(db_path: Path, status: dict[str, Any]) -> dict[str, Any]:
         )
     return {"status": "accepted", "source_id": status["source_id"],
             "received_at": received, "clock_offset_ms": offset_ms}
- 
- 
-def create_app(settings: Settings) -> FastAPI:
-    """Membuat aplikasi Monitor dari satu objek Settings."""
+
+
+def _seed_operator(settings: Settings) -> None:
+    """Salin akun operator dari konfigurasi ke database (hash sudah di-hash, bukan password mentah)."""
+    if settings.operator_username and settings.operator_password_hash:
+        with connect(settings.db_path) as db:
+            db.execute(
+                "INSERT INTO operators(username, password_hash, active) VALUES(?,?,1)"
+                " ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, active=1",
+                (settings.operator_username, settings.operator_password_hash))
+
+
+def create_app(settings: Settings, *, model: Any = None, model_error: str | None = None,
+               start_analysis: bool = False, clock=time.time) -> FastAPI:
+    """Membuat aplikasi Monitor dari satu objek Settings.
+
+    `model` adalah paket hasil load_model() atau None; `model_error` adalah kode alasan bila gagal dimuat.
+    `start_analysis=True` menyalakan loop analisis latar belakang (dipakai saat produksi).
+    """
     initialize_monitor(settings.db_path)
-    app = FastAPI(title="LogLab Monitor")
+    _seed_operator(settings)
     db_path = settings.db_path
- 
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_: FastAPI):
+        task = None
+        if start_analysis:
+            async def analysis_loop() -> None:
+                while True:
+                    try:
+                        now = datetime.fromtimestamp(clock(), timezone.utc)
+                        await run_in_threadpool(run_cycle, db_path, now, model, model_error)
+                    except Exception as exc:  # kegagalan analisis tidak boleh menjatuhkan penerimaan event
+                        log.warning("siklus analisis gagal: %s", type(exc).__name__)
+                    await asyncio.sleep(ANALYSIS_INTERVAL_SECONDS)
+            task = asyncio.create_task(analysis_loop())
+        try:
+            yield
+        finally:
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+    app = FastAPI(title="LogLab Monitor", lifespan=lifespan)
+
+    def model_status() -> dict[str, Any]:
+        if model is not None:
+            return {"loaded": True, "version": model.model_version, "hash": model.model_hash}
+        return {"loaded": False, "error": model_error or "model_not_configured"}
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        """Liveness publik minimal. HTTP 200 bukan bukti delivery, analisis, atau restore."""
+        return {"service": "loglab-monitor", "state": "ready", "contract_version": settings.contract_version}
+
+    register_console(app, settings, model_status=model_status, clock=clock)
+
     def authorized(request: Request) -> bool:
         header = request.headers.get("authorization", "")
         token = header[7:] if header.startswith("Bearer ") else ""
         # compare_digest membandingkan dalam waktu tetap supaya token tidak bisa ditebak
         return hmac.compare_digest(token.encode("utf-8"), settings.source_token.encode("utf-8"))
- 
+
     async def read_json(request: Request) -> tuple[Any, JSONResponse | None, str | None]:
         """Baca body dengan batas ukuran, lalu parse JSON."""
         declared = request.headers.get("content-length", "")
@@ -125,7 +184,7 @@ def create_app(settings: Settings) -> FastAPI:
             return json.loads(body), None, None
         except (ValueError, UnicodeDecodeError):
             return None, _error(400, "invalid_json"), "invalid_json"
- 
+
     @app.post("/api/v1/events")
     async def ingest_event(request: Request) -> JSONResponse:
         if not authorized(request):
@@ -152,7 +211,7 @@ def create_app(settings: Settings) -> FastAPI:
             return _error(409, conflict)
         # Sampai sini transaksi SUDAH commit; baru sekarang receipt dikirim.
         return JSONResponse(build_receipt(event, status), status_code=200)
- 
+
     @app.post("/api/v1/source-status")
     async def ingest_status(request: Request) -> JSONResponse:
         if not authorized(request):
@@ -175,5 +234,5 @@ def create_app(settings: Settings) -> FastAPI:
         except sqlite3.Error:
             return _error(503, "service_unavailable")
         return JSONResponse(answer, status_code=200)
- 
+
     return app
