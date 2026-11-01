@@ -319,10 +319,10 @@ Bagian ini belum berisi hasil run. Setelah mengerjakan task, isi tabel dengan ha
 | make check-contract | ef3ee18 | make check-contract | PASS: contract 1.0.0 ... | PASS: contract 1.0.0, role templates and documentation tables agree. | Lulus |
 | make test-contract | ef3ee18 | make test-contract | semua tes kontrak OK | OK | Lulus |
 | Seluruh tes proyek | ef3ee18 | make test | semua tes lulus | 126 tes, 0 gagal, 0 error | Lulus |
-| R-06 setup.sh utuh di VM | ef3ee18 | sudo bash deployment/monitor/setup.sh | service aktif, health ready | belum dijalankan di VM | Belum diuji |
-| R-06 health HTTPS dan firewall | ef3ee18 | curl --cacert /etc/loglab/ca.crt https://172.16.202.22:8443/health; sudo nft list ruleset | state ready; policy drop | belum dijalankan | Belum diuji |
-| R-06 reboot | ef3ee18 | sudo reboot, cek dalam 60 detik | service dan firewall aktif kembali | belum dijalankan | Belum diuji | |
-| R-06 backup dan restore drill di VM | ef3ee18 | systemctl start loglab-monitor-backup.service; restore_drill.py | HASIL: LULUS | belum dijalankan di VM | Belum diuji |
+| R-06 setup.sh utuh di VM | d000525 | LOGLAB_SKIP_FIREWALL=1 sudo -E bash deployment/monitor/setup.sh (dua putaran), lalu tanpa skip untuk firewall | service aktif, health ready, setup ulang tidak menimpa env | SIAP muncul; service active dan enabled; proses uvicorn berjalan sebagai loglab-svc; setup ulang: "Env sudah ada, tidak ditimpa". Token Source sementara (belum disepakati dengan Erna); sertifikat uji lokal dari make-test-tls.sh, bukan CA lab | Lulus |
+| R-06 health HTTPS dan firewall | d000525 | sudo curl --cacert /etc/loglab/ca.crt https://172.16.202.22:8443/health; sudo nft list ruleset; ping, SSH, dan dashboard dari Windows | state ready; policy drop; hanya 172.16.202.1 dan 172.16.202.21 diizinkan | health: state ready; input policy drop; port 22 dan 8443 hanya dari 172.16.202.1, port 8443 dari 172.16.202.21; ping, SSH, dan dashboard dari Windows berhasil; jendela Private diarahkan ke halaman login; dashboard menunjukkan 1 event tersimpan (fixture dikirim dua kali) | Lulus |
+| R-06 reboot | d000525 | sudo reboot, cek dalam 60 detik | service dan firewall aktif kembali | [service active dan policy drop terlihat dalam sekitar N detik; nproc 2; ens34 172.16.202.22/24] | Lulus |
+| R-06 backup dan restore drill di VM | d000525 | sudo systemctl start loglab-monitor-backup.service; sudo .venv/bin/python deployment/monitor/restore_drill.py | daily.sqlite3 ada; HASIL: LULUS | daily.sqlite3 ada di /var/backups/loglab; laporan restore HASIL: LULUS | Lulus |
 | Source Erna ke Monitor | - | uji dua VM | event dari Source tiba dan tersimpan | belum dicoba; menunggu token dan VM Source | Belum diuji |
 | Paket model integrator | - | pasang model.json dan model.json.sha256 | dashboard menampilkan versi dan hash model | belum ada paket dari integrator | Belum diuji |
 
