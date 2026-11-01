@@ -1,0 +1,32 @@
+[Unit]
+Description=LogLab Monitor (penerima event, analisis, console operator)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/loglab/monitor.env
+
+[Service]
+Type=simple
+User=loglab-svc
+Group=loglab-svc
+WorkingDirectory=/home/loglab/LogLab
+# Env dibaca systemd (root) sebelum proses berjalan sebagai loglab-svc.
+EnvironmentFile=/etc/loglab/monitor.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# Bind IP, port, dan berkas TLS dibaca dari env (kontrak 1.0.0); TLS dipasang langsung di Uvicorn.
+ExecStart=/home/loglab/LogLab/.venv/bin/python -m uvicorn loglab.monitor_main:app --host ${LOGLAB_BIND_HOST} --port ${LOGLAB_PORT} --ssl-keyfile ${LOGLAB_TLS_KEY} --ssl-certfile ${LOGLAB_TLS_CERT} --no-access-log --no-server-header --log-level warning --timeout-graceful-shutdown 5
+# Hidup lagi otomatis; bila IP host-only belum siap saat boot, bind gagal lalu dicoba ulang.
+Restart=always
+RestartSec=2
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/loglab /var/backups/loglab
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

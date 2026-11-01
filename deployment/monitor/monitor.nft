@@ -1,0 +1,33 @@
+#!/usr/sbin/nft -f
+# Firewall Monitor (kontrak 1.0.0). Masuk: default-deny. Hanya host dan Source yang diizinkan.
+flush ruleset
+
+table inet loglab_monitor {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        ct state established,related accept
+        ct state invalid drop
+        iifname "lo" accept
+
+        # Balasan DHCP (alamat NAT saat instalasi)
+        udp sport 67 udp dport 68 accept
+
+        # Host: SSH dan dashboard HTTPS
+        ip saddr 172.16.202.1 tcp dport { 22, 8443 } accept
+
+        # Source (Erna): hanya HTTPS untuk event dan status. Tidak ada SSH dari Source.
+        ip saddr 172.16.202.21 tcp dport 8443 accept
+
+        # Ping dari host dan Source untuk diagnosis
+        ip saddr { 172.16.202.1, 172.16.202.21 } icmp type echo-request accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+}

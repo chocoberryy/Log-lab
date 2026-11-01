@@ -1,0 +1,15 @@
+[Unit]
+Description=LogLab Monitor - backup database harian (atomik, dicek integritasnya)
+
+[Service]
+Type=oneshot
+User=loglab-svc
+Group=loglab-svc
+WorkingDirectory=/home/loglab/LogLab
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/loglab/LogLab/.venv/bin/python -m loglab.backup --source /var/lib/loglab/monitor.sqlite3 --destination /var/backups/loglab/daily.sqlite3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/loglab /var/backups/loglab
