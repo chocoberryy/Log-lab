@@ -305,7 +305,26 @@ Bagian ini belum berisi hasil run. Setelah mengerjakan task, isi tabel dengan ha
 
 | Langkah atau case | Commit yang diuji | Perintah atau tindakan | Hasil yang diharapkan | Hasil nyata dan bukti aman | Status |
 | --- | --- | --- | --- | --- | --- |
-| Belum diisi | Belum | Belum | Ikuti case pada langkah terkait | Belum ada hasil | Belum diuji |
+| R3-01 event valid | ef3ee18 | unittest test_r3_01 | event tersimpan, receipt sama dengan fixture | 1 tes dijalankan, 0 gagal, 0 error | Lulus |
+| R3-02 duplikat | ef3ee18 | unittest test_r3_02 | event sama dikirim dua kali: satu record, receipt kedua duplicate | 1 tes dijalankan, 0 gagal, 0 error | Lulus |
+| R3-03 konflik | ef3ee18 | unittest test_r3_03 | ID/sequence konflik ditolak 409, data awal utuh | 1 tes dijalankan, 0 gagal, 0 error | Lulus |
+| R3-04 input salah | ef3ee18 | unittest test_r3_04 | token/schema/digest/ukuran salah ditolak, tanpa secret di catatan | 1 tes dijalankan, 0 gagal, 0 error | Lulus |
+| R3-05 status sumber | ef3ee18 | unittest test_r3_05 | status divalidasi dan bukan event login | 1 tes dijalankan, 0 gagal, 0 error | Lulus |
+| Startup dan /health | ef3ee18 | unittest EntrypointTests | import tanpa efek samping, health publik minimal, ingest jalan tanpa model | 2 tes dijalankan, 0 gagal, 0 error | Lulus |
+| R-04 fitur login-window-v1 | ef3ee18 | unittest tests.test_features | tujuh fitur sesuai contoh tangan; input rusak ditolak | 9 tes dijalankan, 0 gagal, 0 error | Lulus |
+| R-04 analisis: window, kualitas, revisi, rules | ef3ee18 | unittest tests.test_analysis | OPEN/STALE/INCOMPLETE/READY benar; revisi immutable; batas 9/10 gagal dan 4/5 akun | 19 tes dijalankan, 0 gagal, 0 error | Lulus |
+| R-05 model: loader dan inferensi | ef3ee18 | unittest tests.test_model | hash/schema/urutan fitur divalidasi; skor sama dengan hitungan tangan (1e-8) | 15 tes dijalankan, 0 gagal, 0 error | Lulus |
+| R-05 console operator | ef3ee18 | unittest tests.test_console | sesi, CSRF, rate limit, filter, pagination, escaping, state hasil benar | 23 tes dijalankan, 0 gagal, 0 error | Lulus |
+| R-06 konfigurasi deployment dan restore drill | ef3ee18 | unittest tests.test_deployment | unit, firewall, izin, setup konsisten dengan kontrak; restore drill lulus | 15 tes dijalankan, 0 gagal, 0 error | Lulus |
+| make check-contract | ef3ee18 | make check-contract | PASS: contract 1.0.0 ... | PASS: contract 1.0.0, role templates and documentation tables agree. | Lulus |
+| make test-contract | ef3ee18 | make test-contract | semua tes kontrak OK | OK | Lulus |
+| Seluruh tes proyek | ef3ee18 | make test | semua tes lulus | 126 tes, 0 gagal, 0 error | Lulus |
+| R-06 setup.sh utuh di VM | ef3ee18 | sudo bash deployment/monitor/setup.sh | service aktif, health ready | belum dijalankan di VM | Belum diuji |
+| R-06 health HTTPS dan firewall | ef3ee18 | curl --cacert /etc/loglab/ca.crt https://172.16.202.22:8443/health; sudo nft list ruleset | state ready; policy drop | belum dijalankan | Belum diuji |
+| R-06 reboot | ef3ee18 | sudo reboot, cek dalam 60 detik | service dan firewall aktif kembali | belum dijalankan | Belum diuji | |
+| R-06 backup dan restore drill di VM | ef3ee18 | systemctl start loglab-monitor-backup.service; restore_drill.py | HASIL: LULUS | belum dijalankan di VM | Belum diuji |
+| Source Erna ke Monitor | - | uji dua VM | event dari Source tiba dan tersimpan | belum dicoba; menunggu token dan VM Source | Belum diuji |
+| Paket model integrator | - | pasang model.json dan model.json.sha256 | dashboard menampilkan versi dan hash model | belum ada paket dari integrator | Belum diuji |
 
 Sebelum meminta review akhir, pastikan file pada target repo tersedia, pemeriksaan peran lulus atau keterbatasannya tertulis, dan perubahan bersama telah direview. Daftar PR menunjukkan bagian yang ditulis sendiri dan bagian yang menggunakan ulang sumber lama.
 
